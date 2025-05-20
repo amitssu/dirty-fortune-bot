@@ -29,7 +29,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     query = update.inline_query.query.strip()  # не важен, пусть даже пустой
     result = InlineQueryResultArticle(
         id=str(uuid4()),
-        title="Предсказание от которого тебе станет хуже",
+        title="Такие себе пророчества",
         input_message_content=InputTextMessageContent(get_random_fortune()),
     )
     await update.inline_query.answer([result], cache_time=0)
