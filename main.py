@@ -40,7 +40,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     await update.inline_query.answer([result], cache_time=0)
 
 # Запуск приложения
-if name == "__main__":
+if __name__ == "__main__":
     BOT_TOKEN = os.environ.get("BOT_TOKEN")
     application = Application.builder().token(BOT_TOKEN).build()
     application.add_handler(InlineQueryHandler(inline_query))
