@@ -7,7 +7,7 @@ from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessag
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 TOKEN = os.getenv("BOT_TOKEN")
-DATABASE_URL = os.getenv("postgresql://postgres:IlCGUgrUfZKLQPAeRjwkOjPlpuUiavvB@postgres.railway.internal:5432/railway")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
