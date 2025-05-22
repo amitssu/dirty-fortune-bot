@@ -9,7 +9,7 @@ from uuid import uuid4
 logging.basicConfig(level=logging.INFO)
 
 FORTUNES = [
-       "Сегодня ты либо найдёшь любовь, либо снова уснёшь с телефоном в руке и рукой в штанах.",
+         "Сегодня ты либо найдёшь любовь, либо снова уснёшь с телефоном в руке и рукой в штанах.",
     "Будущее туманно. Особенно после трёх рюмок и звонка бывшей.",
     "Сегодня ты будешь на высоте. Особенно если сядешь на кактус.",
     "Судьба тебе улыбается. Правда, с ухмылкой и битой в руке.",
@@ -128,15 +128,19 @@ FORTUNES = [
        "Ты будешь весь вечер обсуждать, как делать минет, но только через некоторое время ты поймешь, что вокруг одни парни",
        "Сегодня ты как локальный мем — никто не понимает, но все смеются. Над тобой.",
        "Судьба тебе подмигнёт. А потом уебёт тапком, как таракана с амбициями.",
-       
+       "Поздравляю с распаковкой сегодня! Теперь ты альтернативный натурал."
+       "Еще один скучный день скучного натурала."
+    
 ]
 
 used_fortunes = {}
+user_cooldown = {}
+COOLDOWN_SECONDS = 86400  # 24 часа
 
 def get_random_fortune():
     now = time.time()
     for text in list(used_fortunes):
-        if now - used_fortunes[text] > 600:
+        if now - used_fortunes[text] > 86400:
             del used_fortunes[text]
     available = [f for f in FORTUNES if f not in used_fortunes]
     if not available:
@@ -147,11 +151,27 @@ def get_random_fortune():
     return choice
 
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    result = InlineQueryResultArticle(
-        id=str(uuid4()),
-        title="Такие себе пророчества",
-        input_message_content=InputTextMessageContent(get_random_fortune()),
-    )
+    user_id = update.inline_query.from_user.id
+    now = time.time()
+
+    if user_id in user_cooldown and now - user_cooldown[user_id] < COOLDOWN_SECONDS:
+        warning_text = "Утали свой пыл! Ты уже получил своё предсказание"
+        result = InlineQueryResultArticle(
+            id=str(uuid4()),
+            title="Пыл поубавь...",
+            input_message_content=InputTextMessageContent(warning_text),
+            description=warning_text,
+        )
+    else:
+        fortune = get_random_fortune()
+        result = InlineQueryResultArticle(
+            id=str(uuid4()),
+            title="Такие себе пророчества",
+            input_message_content=InputTextMessageContent(fortune),
+            description=fortune,
+        )
+        user_cooldown[user_id] = now
+
     await update.inline_query.answer([result], cache_time=0)
 
 if __name__ == "__main__":
