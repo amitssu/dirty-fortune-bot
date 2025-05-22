@@ -1,131 +1,83 @@
-import logging
-import os
+import asyncio
 import random
+import os
 import time
-import sqlite3
-from telegram import InlineQueryResultArticle, InputTextMessageContent, Update
-from telegram.ext import Application, InlineQueryHandler, ContextTypes
-from uuid import uuid4
+from aiogram import Bot, Dispatcher, types
+from aiogram.types import InlineQuery, InlineQueryResultArticle, InputTextMessageContent
+from aiogram.filters import CommandStart
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+import asyncpg
 
-logging.basicConfig(level=logging.INFO)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-DB_FILE = "botdata.db"
-COOLDOWN_SECONDS = 600      # 10 минут
-REPEAT_BLOCK_SECONDS = 604800  # Неделя
-CLEANUP_INTERVAL = 86400    # Очистка раз в сутки
-last_cleanup = 0
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
 
-def init_db():
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS fortunes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            text TEXT NOT NULL
+async def init_db():
+    conn = await asyncpg.connect(DATABASE_URL)
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            id SERIAL PRIMARY KEY,
+            text TEXT UNIQUE NOT NULL
         )
     """)
-
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS cooldowns (
-            user_id INTEGER PRIMARY KEY,
-            last_time REAL
+    await conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_activity (
+            user_id BIGINT NOT NULL,
+            prediction TEXT NOT NULL,
+            timestamp BIGINT NOT NULL
         )
     """)
+    await conn.close()
 
-    cursor.execute("""
-        CREATE TABLE IF NOT EXISTS used_fortunes (
-            text TEXT PRIMARY KEY,
-            used_time REAL
-        )
-    """)
+@dp.message(CommandStart())
+async def handle_start(message: types.Message):
+    await message.answer("Нажми: /fortune — чтобы получить предсказание.")
 
-    # Добавим фразы, если таблица пуста
-    cursor.execute("SELECT COUNT(*) FROM fortunes")
-    if cursor.fetchone()[0] == 0:
-        sample_fortunes = [
-            "Сегодня ты либо найдёшь любовь, либо снова уснёшь с телефоном в руке и рукой в штанах.",
-            "Будущее туманно. Особенно после трёх рюмок и звонка бывшей.",
-            "Сегодня ты будешь на высоте. Особенно если сядешь на кактус.",
-            "Судьба тебе улыбается. Правда, с ухмылкой и битой в руке.",
-            "Ты найдёшь опору. В чужом пахе. Случайно. (наверное)",
-            "Ты станешь легендой. Как тот, кого ебали стоя, лёжа и в комментариях.",
-            "Сегодня ты сияешь. Как пятно на трусах перед свиданием.",
-            "Ты вдохновишь группу. На ритуальный отъеб с шаманскими плясками на твоих чувствах."
-        ]
-        cursor.executemany("INSERT INTO fortunes (text) VALUES (?)", [(f,) for f in sample_fortunes])
-    conn.commit()
-    conn.close()
+@dp.message(lambda message: message.text == "/fortune")
+async def handle_fortune(message: types.Message):
+    user_id = message.from_user.id
+    now = int(time.time())
+    conn = await asyncpg.connect(DATABASE_URL)
 
-def cleanup_db():
-    global last_cleanup
-    now = time.time()
-    if now - last_cleanup >= CLEANUP_INTERVAL:
-        conn = sqlite3.connect(DB_FILE)
-        cursor = conn.cursor()
-        cursor.execute("DELETE FROM cooldowns WHERE last_time < ?", (now - 604800,))
-        cursor.execute("DELETE FROM used_fortunes WHERE used_time < ?", (now - REPEAT_BLOCK_SECONDS))
-        conn.commit()
-        conn.close()
-        last_cleanup = now
+    # Проверим спам
+    last = await conn.fetchrow("SELECT timestamp FROM user_activity WHERE user_id = $1 ORDER BY timestamp DESC LIMIT 1", user_id)
+    if last and now - last["timestamp"] < 600:  # 10 минут
+        await message.answer("Утали свой пыл! Ты уже получил своё предсказание.")
+        await conn.close()
+        return
 
-def user_can_receive(user_id):
-    cleanup_db()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT last_time FROM cooldowns WHERE user_id = ?", (user_id,))
-    row = cursor.fetchone()
-    now = time.time()
-    if row and now - row[0] < COOLDOWN_SECONDS:
-        conn.close()
-        return False
-    cursor.execute("REPLACE INTO cooldowns (user_id, last_time) VALUES (?, ?)", (user_id, now))
-    conn.commit()
-    conn.close()
-    return True
+    # Получим список всех предсказаний
+    predictions = await conn.fetch("SELECT text FROM predictions")
+    predictions = [row["text"] for row in predictions]
 
-def get_random_fortune():
-    now = time.time()
-    conn = sqlite3.connect(DB_FILE)
-    cursor = conn.cursor()
-    cursor.execute("SELECT text FROM fortunes WHERE text NOT IN (SELECT text FROM used_fortunes)")
-    available = [row[0] for row in cursor.fetchall()]
+    # Исключим те, что уже были за последние 10 минут
+    used = await conn.fetch("SELECT prediction FROM user_activity WHERE user_id = $1 AND timestamp > $2", user_id, now - 600)
+    used_texts = {row["prediction"] for row in used}
+    available = [p for p in predictions if p not in used_texts]
 
     if not available:
-        cursor.execute("DELETE FROM used_fortunes")
-        conn.commit()
-        cursor.execute("SELECT text FROM fortunes")
-        available = [row[0] for row in cursor.fetchall()]
+        available = predictions
 
-    choice = random.choice(available)
-    cursor.execute("REPLACE INTO used_fortunes (text, used_time) VALUES (?, ?)", (choice, now))
-    conn.commit()
-    conn.close()
-    return choice
+    result = random.choice(available)
+    await message.answer(result)
+    await conn.execute("INSERT INTO user_activity (user_id, prediction, timestamp) VALUES ($1, $2, $3)", user_id, result, now)
+    await conn.close()
 
-async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    user_id = update.inline_query.from_user.id
-    if user_can_receive(user_id):
-        text = get_random_fortune()
-        result = InlineQueryResultArticle(
-            id=str(uuid4()),
-            title="Такие себе пророчества",
-            input_message_content=InputTextMessageContent(text),
-            description="Нажми, чтобы увидеть предсказание",
-        )
-    else:
-        text = "Угомонись! Ты уже получил своё пророчество. Вернись позже."
-        result = InlineQueryResultArticle(
-            id=str(uuid4()),
-            title="Пыл поубавь...",
-            input_message_content=InputTextMessageContent(text),
-            description="Нажми, чтобы увидеть предсказание",
-        )
-    await update.inline_query.answer([result], cache_time=0)
+@dp.inline_query()
+async def inline_query(query: InlineQuery):
+    input_content = InputTextMessageContent("Нажми, чтобы получить предсказание")
+    item = InlineQueryResultArticle(
+        id="1",
+        title="Нажми, чтобы получить предсказание",
+        input_message_content=input_content
+    )
+    await query.answer([item], cache_time=0)
+
+async def on_startup():
+    await init_db()
 
 if __name__ == "__main__":
-    init_db()
-    BOT_TOKEN = os.environ.get("BOT_TOKEN")
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(InlineQueryHandler(inline_query))
-    application.run_polling()
+    asyncio.run(on_startup())
+    dp.run_polling(bot)
