@@ -135,12 +135,12 @@ FORTUNES = [
 
 used_fortunes = {}
 user_cooldown = {}
-COOLDOWN_SECONDS = 86400  # 24 часа
+COOLDOWN_SECONDS = 604800  # 7 дней
 
 def get_random_fortune():
     now = time.time()
     for text in list(used_fortunes):
-        if now - used_fortunes[text] > 86400:
+        if now - used_fortunes[text] > 604800:
             del used_fortunes[text]
     available = [f for f in FORTUNES if f not in used_fortunes]
     if not available:
