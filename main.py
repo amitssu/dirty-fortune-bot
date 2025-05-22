@@ -155,7 +155,7 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     now = time.time()
 
     if user_id in user_cooldown and now - user_cooldown[user_id] < COOLDOWN_SECONDS:
-        warning_text = "Утали свой пыл! Ты уже получил своё предсказание"
+        warning_text = "Ут0ли свой пыл! Ты уже получил своё предсказание"
         result = InlineQueryResultArticle(
             id=str(uuid4()),
             title="Пыл поубавь...",
