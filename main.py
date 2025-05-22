@@ -37,7 +37,7 @@ async def inline_query_handler(inline_query: InlineQuery):
         InlineQueryResultArticle(
             id="1",
             title="Нажми, чтобы увидеть предсказание",
-            input_message_content=InputTextMessageContent(fortune),
+            input_message_content=InputTextMessageContent(message_text=fortune),
             description="Нажми, чтобы увидеть предсказание"
         )
     ]
