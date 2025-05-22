@@ -1,16 +1,15 @@
 import logging
 import os
 import random
+import time
 from telegram import InlineQueryResultArticle, InputTextMessageContent, Update
 from telegram.ext import Application, InlineQueryHandler, ContextTypes
 from uuid import uuid4
 
-# Включаем логгирование (по желанию)
 logging.basicConfig(level=logging.INFO)
 
-# Грязные предсказания
 FORTUNES = [
-     "Сегодня ты либо найдёшь любовь, либо снова уснёшь с телефоном в руке и рукой в штанах.",
+       "Сегодня ты либо найдёшь любовь, либо снова уснёшь с телефоном в руке и рукой в штанах.",
     "Будущее туманно. Особенно после трёх рюмок и звонка бывшей.",
     "Сегодня ты будешь на высоте. Особенно если сядешь на кактус.",
     "Судьба тебе улыбается. Правда, с ухмылкой и битой в руке.",
@@ -126,15 +125,24 @@ FORTUNES = [
      "Тебя не позовут на мероприятие даже за деньги.",
      "Сегодня ты как самая сладкая булочка на встрече ЗОЖников — никому нахуй не нужна.",
      "Тебя позовут на теннис и встретят радостно. Но ракеткой будут звать тебя к порядку каждый раз, как ты попытаешься пошутить.",
-     
 ]
 
-def get_random_fortune():
-    return random.choice(FORTUNES)
+used_fortunes = {}
 
-# Обработчик инлайн-запросов
+def get_random_fortune():
+    now = time.time()
+    for text in list(used_fortunes):
+        if now - used_fortunes[text] > 600:
+            del used_fortunes[text]
+    available = [f for f in FORTUNES if f not in used_fortunes]
+    if not available:
+        used_fortunes.clear()
+        available = FORTUNES.copy()
+    choice = random.choice(available)
+    used_fortunes[choice] = now
+    return choice
+
 async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.inline_query.query.strip()  # не важен, пусть даже пустой
     result = InlineQueryResultArticle(
         id=str(uuid4()),
         title="Такие себе пророчества",
@@ -142,7 +150,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     )
     await update.inline_query.answer([result], cache_time=0)
 
-# Запуск приложения
 if __name__ == "__main__":
     BOT_TOKEN = os.environ.get("BOT_TOKEN")
     application = Application.builder().token(BOT_TOKEN).build()
