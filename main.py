@@ -132,7 +132,7 @@ async def inline_query_handler(inline_query: InlineQuery):
     result = [
         InlineQueryResultArticle(
             id=f"fortune_{fortune_id}_{user_id}_{today.isoformat()}",
-            title="Нажми, чтобы увидеть предсказание",
+            title="Нажми, чтобы узнать свою судьбу",
             input_message_content=InputTextMessageContent(
                 message_text=fortune_text
             ),
