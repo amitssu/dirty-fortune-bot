@@ -108,7 +108,7 @@ async def inline_query_handler(inline_query: InlineQuery):
             InlineQueryResultArticle(
                 id="stub",
                 title="😈 Ну-ну...",
-                input_message_content=InputTextMessageContent(text)
+                input_message_content=InputTextMessageContent(message_text=text)
             )
         ]
 
