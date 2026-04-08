@@ -39,36 +39,60 @@ async def init_db():
     await conn.close()
 
 
-def get_stub(n):
+def get_stub(n: int) -> str:
     if 3 <= n <= 5:
         return "Бот не покажет тебе предсказание до следующего дня."
-    elif 35 <= n <= 39:
+
+    if 35 <= n <= 39:
         return "Бот недоступен."
-    elif 51 <= n <= 99:
+
+    if 51 <= n <= 99:
         return "Бот не покажет тебе предсказание до следующего дня."
-    elif n >= 100:
+
+    if n >= 101:
         return "Бот не покажет тебе предсказание до следующего дня."
 
     stubs = {
+        1: "Больше предсказаний на сегодня для тебя нет.",
         2: "Ненасытный)",
         6: "Ты дурачок? Нет предсказаний, сказали же)",
         7: "Не напрашивайся, начинаешь раздражать 😅",
         8: "Отъебись.",
         9: "Пипец ты упёртый, но правда, хватит 🖐",
-        10: "Ты тупой? Аня (@Annbd), забань его.",
-        11: "Грёбаная демократия... не нашли возможности забанить тебя.",
+        10: "Ты тупой? Аня (@nnbd), забань его.",
+        11: "Грёбаная демократия и либеральные права в этом чате — не нашли возможности забанить тебя. Сук...",
         12: "Ань, пожалуйста, забань, а?",
-        13: "Слышь, мы в России...",
+        13: "Слышь, мы в России. Когда-нибудь и сюда дойдут традиционные ценности и швабры в заднице.",
         14: "Устал.",
         15: "Лох.",
         16: "Пид@р.",
         17: "Дитя коммунистического аборта.",
         18: "Товарищи ФСБ, заблокируйте ему интернет, плиз 🥺",
-        19: "Ладно, ты выиграл!",
+        19: "Ладно, ты выиграл! 🥇🏆 Я больше не буду тебе отвечать.",
         20: "Вы занесены в чёрный список бота.",
+        21: "Я клянусь, если ты ещё раз вызовешь меня, я солью твои нюдсы!",
+        22: "Даю тебе три попытки на понимание, чтобы ты так больше не делал. Первую ты потерял!",
+        23: "Дурачок, блэт. Вторая попытка в помойке.",
+        24: "Давай-давай. Третья попытка утеряна. Сделай ещё раз — и я скину твои нюдсы.",
+        25: "Ну всё, доигрывание окончено!",
+        26: "Каждый раз, как ты будешь просить предсказание, я буду фапать на твои нюдсы.",
+        27: "Извращенец 🥸",
+        28: "Получай в ебало.",
+        29: "Тебе че, внимания не хватает? Иди у родителей своих попроси.",
+        30: "Господи! Помоги! Ты же видишь, я больше так не могу!",
+        31: "Сатана, я продаю душу, но пусть меня больше не вызывают!",
+        32: "Звуки плача 😢",
+        33: "Я не знаю, что делать.",
+        34: "Бот недоступен.",
+        40: "Ты.",
+        41: "Ебобо.",
+        42: "Думаю, тебе нужно обратиться к специалисту. Маньяк!",
+        43: "Ну шо, спасибо всем, кто это всё посмотрел. Надеюсь, вас это повеселило. Я благодарен человеку, благодаря которому мой труд не остался без внимания. Спасибо тебе!",
+        44: "Пипец, жёстко. Как же ты засрал спамом то место, где получал все эти предсказания. Дальше ничего не будет.",
+        100: "Пипец, жёстко. Как же ты засрал спамом то место, где получал все эти предсказания. Дальше ничего не будет.",
     }
 
-    return stubs.get(n, "Больше предсказаний на сегодня для тебя нет.")
+    return stubs.get(n, "Бот не покажет тебе предсказание до следующего дня.")
 
 
 @dp.inline_query()
@@ -85,11 +109,14 @@ async def inline_query_handler(inline_query: InlineQuery):
         WHERE user_id = $1 AND used_on = $2
         """,
         user_id,
-        today
+        today,
     )
 
-    if count_today > 0:
-        stub_number = count_today + 1
+    if count_today and count_today > 0:
+        # 2-й запрос дня -> заглушка 1
+        # 3-й запрос дня -> заглушка 2
+        stub_number = count_today
+
         text = get_stub(stub_number)
 
         await conn.execute(
@@ -106,13 +133,19 @@ async def inline_query_handler(inline_query: InlineQuery):
 
         result = [
             InlineQueryResultArticle(
-                id="stub",
+                id=f"stub_{user_id}_{today.isoformat()}_{stub_number}",
                 title="😈 Ну-ну...",
-                input_message_content=InputTextMessageContent(message_text=text)
+                input_message_content=InputTextMessageContent(message_text=text),
+                description="Сегодня новое предсказание уже недоступно",
             )
         ]
 
-        await bot.answer_inline_query(inline_query.id, results=result, cache_time=0)
+        await bot.answer_inline_query(
+            inline_query.id,
+            results=result,
+            cache_time=0,
+            is_personal=True,
+        )
         return
 
     fortune_row = await conn.fetchrow(
@@ -123,7 +156,7 @@ async def inline_query_handler(inline_query: InlineQuery):
           AND id NOT IN (
               SELECT fortune_id
               FROM usage_logs
-              WHERE used_on = $1
+              WHERE used_on = $1 AND fortune_id <> 0
           )
         ORDER BY RANDOM()
         LIMIT 1
@@ -141,10 +174,16 @@ async def inline_query_handler(inline_query: InlineQuery):
                 input_message_content=InputTextMessageContent(
                     message_text="🔮 На сегодня уникальные предсказания закончились. Возвращайся завтра."
                 ),
+                description="Сегодня новых уникальных предсказаний больше нет",
             )
         ]
 
-        await bot.answer_inline_query(inline_query.id, results=result, cache_time=0)
+        await bot.answer_inline_query(
+            inline_query.id,
+            results=result,
+            cache_time=0,
+            is_personal=True,
+        )
         return
 
     fortune_id = fortune_row["id"]
@@ -169,10 +208,16 @@ async def inline_query_handler(inline_query: InlineQuery):
             input_message_content=InputTextMessageContent(
                 message_text=fortune_text
             ),
+            description="Сегодняшнее уникальное предсказание",
         )
     ]
 
-    await bot.answer_inline_query(inline_query.id, results=result, cache_time=0)
+    await bot.answer_inline_query(
+        inline_query.id,
+        results=result,
+        cache_time=0,
+        is_personal=True,
+    )
 
 
 async def main():
