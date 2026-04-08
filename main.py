@@ -154,7 +154,7 @@ async def get_or_rotate_fortune(conn: asyncpg.Connection):
         WHERE is_active = TRUE
         ORDER BY RANDOM()
         LIMIT 1
-        """,
+        """
     )
 
     return current_cycle, fortune_row
@@ -167,18 +167,34 @@ async def inline_query_handler(inline_query: InlineQuery):
 
     conn = await asyncpg.connect(DATABASE_URL)
 
-    count_today = await conn.fetchval(
+    has_fortune_today = await conn.fetchval(
         """
         SELECT COUNT(*)
         FROM usage_logs
-        WHERE user_id = $1 AND used_on = $2
+        WHERE user_id = $1
+          AND used_on = $2
+          AND response_type = 'fortune'
         """,
         user_id,
         today,
     )
 
-    if count_today and count_today > 0:
-        stub_number = count_today
+    if has_fortune_today and has_fortune_today > 0:
+        stub_count_today = await conn.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM usage_logs
+            WHERE user_id = $1
+              AND used_on = $2
+              AND response_type = 'stub'
+            """,
+            user_id,
+            today,
+        )
+
+        # 2-й запрос дня -> заглушка 1
+        # 3-й запрос дня -> заглушка 2
+        stub_number = stub_count_today + 1
         text = get_stub(stub_number)
 
         await conn.execute(
